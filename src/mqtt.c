@@ -141,9 +141,100 @@ static size_t unpack_mqtt_publish(const unsigned char *buf, union mqtt_header *h
     return len;
 }
 
-static size_t unpack_mqtt_subscribe(const unsigned char *, union mqtt_header *, union mqtt_packet *);
-static size_t unpack_mqtt_unsubscribe(const unsigned char *, union mqtt_header *, union mqtt_packet *);
-static size_t unpack_mqtt_ack(const unsigned char *, union mqtt_header *, union mqtt_packet *);
+static size_t unpack_mqtt_subscribe(const unsigned char *buf, union mqtt_header *hdr, union mqtt_packet *pkt) {
+    struct mqtt_subscribe subscribe = { .header = *hdr };
+
+    /**
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the subscribe packet
+    */
+    size_t len = mqtt_decode_length(&buf);
+    size_t remaining_bytes = len;
+
+    /* Read packet id */
+    subscribe.pkt_id = unpack_u16((const uint8_t **) &buf);
+    remaining_bytes -= sizeof(uint16_t);
+
+    /*
+     * Read in a loop all remaining bytes specified by len of the Fixed Header.
+     * From now on the payload consists of 3-tuples formed by:
+     * - topic length
+     * - topic filter (string)
+     * - qos
+    */
+    int i = 0;
+    while (remaining_bytes > 0) {
+        /* Read length bytes of the first topic filter */
+        remaining_bytes -= sizeof(uint16_t);
+
+        /* We have to make room for additional incoming tuples */
+        subscribe.tuples = realloc(subscribe.tuples, (i+1) * sizeof(*subscribe.tuples));
+        subscribe.tuples[i].topic_len = unpack_string16(&buf, &subscribe.tuples[i].topic);
+        remaining_bytes -= subscribe.tuples[i].topic_len;
+        subscribe.tuples[i].qos = unpack_u8((const uint8_t **) &buf);
+        len -= sizeof(uint8_t);
+        i++;
+    }
+
+    subscribe.tuples_len = i;
+    pkt->subscribe = subscribe;
+
+    return len;
+}
+
+static size_t unpack_mqtt_unsubscribe(const unsigned char *buf, union mqtt_header *hdr, union mqtt_packet *pkt) {
+    struct mqtt_unsubscribe unsubscribe = { .header = *hdr };
+
+    /**
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the unsubscribe packet
+    */
+    size_t len = mqtt_decode_length(&buf);
+    size_t remaining_bytes = len;
+
+    /* Read packet id */
+    unsubscribe.pkt_id = unpack_u16((const uint8_t **) &buf);
+    remaining_bytes -= sizeof(uint16_t);
+
+    /*
+     * Read in a loop all remaining bytes specified by len of the Fixed Header.
+     * From now on the payload consists of 2-tuples formed by:
+     * - topic length
+     * - topic filter (string)
+    */
+    int i = 0;
+    while (remaining_bytes > 0) {
+        /* Read length bytes of the first topic filter */
+        remaining_bytes -= sizeof(uint16_t);
+
+        /* We have to make room for additional incoming tuples */
+        unsubscribe.tuples = realloc(unsubscribe.tuples, (i+1) * sizeof(*unsubscribe.tuples));
+        unsubscribe.tuples[i].topic_len = unpack_string16(&buf, &unsubscribe.tuples[i].topic);
+        remaining_bytes -= unsubscribe.tuples[i].topic_len;
+        i++;
+    }
+
+    unsubscribe.tuples_len = i;
+    pkt->unsubscribe = unsubscribe;
+
+    return len;
+}
+
+static size_t unpack_mqtt_ack(const unsigned char *buf, union mqtt_header *hdr, union mqtt_packet *pkt) {
+    struct mqtt_ack ack = { .header = *hdr };
+
+    /**
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the ack packet
+    */
+    size_t len = mqtt_decode_length(&buf);
+    
+    ack.pkt_id = unpack_u16((const uint8_t **) &buf);
+    pkt->ack = ack;
+
+    return len;
+}
+
 static unsigned char *pack_mqtt_header(const union mqtt_header *);
 static unsigned char *pack_mqtt_ack(const union mqtt_packet *);
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *);
