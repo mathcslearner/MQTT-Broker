@@ -235,6 +235,45 @@ static size_t unpack_mqtt_ack(const unsigned char *buf, union mqtt_header *hdr, 
     return len;
 }
 
+typedef size_t mqtt_unpack_handler(const unsigned char *, union mqtt_header *, union mqtt_packet *);
+
+/*
+ * Unpack functions mapping unpacking_handlers positioned in the array
+ * based on message type
+*/
+static mqtt_unpack_handler *unpack_handlers[11] = {
+    NULL,
+    unpack_mqtt_connect,
+    NULL,
+    unpack_mqtt_publish,
+    unpack_mqtt_ack,
+    unpack_mqtt_ack,
+    unpack_mqtt_ack,
+    unpack_mqtt_ack,
+    unpack_mqtt_subscribe,
+    NULL,
+    unpack_mqtt_unsubscribe
+};
+
+int unpack_mqtt_packet(const unsigned char *buf, union mqtt_packet *pkt) {
+    int rc = 0;
+
+    /* Read first byte of the fixed header */
+    unsigned char type = *buf;
+    union mqtt_header header = {
+        .byte = type
+    };
+
+    if (header.bits.type == DISCONNECT || header.bits.type == PINGREQ || header.bits.type == PINGRESP) {
+        pkt->header = header;
+    } else {
+        /* Call the appropriate unpack handler based on the message type */
+        rc = unpack_handlers[header.bits.type](++buf, &header, pkt);
+    }
+
+    return rc;
+}
+
 static unsigned char *pack_mqtt_header(const union mqtt_header *);
 static unsigned char *pack_mqtt_ack(const union mqtt_packet *);
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *);
