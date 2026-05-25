@@ -52,8 +52,95 @@ unsigned long long mqtt_decode_length(const unsigned char **buf) {
     return value;
 }
 
-static size_t unpack_mqtt_connect(const unsigned char *, union mqtt_header *, union mqtt_packet *);
-static size_t unpack_mqtt_publish(const unsigned char *, union mqtt_header *, union mqtt_packet *);
+/*
+ * MQTT unpacking functions
+*/
+
+static size_t unpack_mqtt_connect(const unsigned char *buf, union mqtt_header *hdr, union mqtt_packet *pkt) {
+    struct mqtt_connect connect = { .header = *hdr };
+    pkt->connect = connect;
+
+    const unsigned char *init = buf;
+    /**
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the connect packet
+    */
+    size_t len = mqtt_decode_length(&buf);
+
+    /**
+     * For now we ignore checks on protocol name and reserved bits, just skip
+     * to the 8th byte
+    */
+    buf = init + 8;
+
+    /* Read variable header byte flags */
+    pkt->connect.byte = unpack_u8((const uint8_t **) &buf);
+
+    /* Read keepalive MSB and LSB (2 bytes word) */
+    pkt->connect.payload.keepalive = unpack_u16((const uint8_t **) &buf);
+
+    /* Read CID length (2 bytes word)*/
+    uint16_t cid_len = unpack((const uint8_t **) &buf);
+
+    /* Read the client id */
+    if (cid_len > 0) {
+        pkt->connect.payload.client_id = malloc(cid_len + 1);
+        unpack_byte((const uint8_t **) &buf, cid_len, pkt->connect.payload.client_id);
+    }
+
+    /* Read the will topic and message if will is set on flags*/
+    if (pkt->connect.bits.will == 1) {
+        unpack_string16(&buf, &pkt->connect.payload.will_topic);
+        unpack_string16(&buf, &pkt->connect.payload.will_message);
+    }
+
+    /* Read the username if username flag is set*/
+    if (pkt->connect.bits.username == 1) {
+        unpack_string16(&buf, &pkt->connect.payload.username);
+    }
+
+    /* Read the password if password flag is set */
+    if (pkt->connect.bits.password == 1) {
+        unpack_string16(&buf, &pkt->connect.payload.password);
+    }
+
+    return len;
+}
+
+static size_t unpack_mqtt_publish(const unsigned char *buf, union mqtt_header *hdr, union mqtt_packet *pkt) {
+    struct mqtt_publish publish = { .header = *hdr };
+    pkt->publish = publish;
+
+    /**
+     * Second byte of the fixed header, contains the length of remaining bytes
+     * of the publish packet
+    */
+    size_t len = mqtt_decode_length(&buf);
+
+    /* Read topic length and topic of the soon-to-be-published message */
+    uint16_t topic_len = unpack_string16(&buf, &pkt->publish.topic);
+    pkt->publish.topiclen = topic_len;
+
+    uint16_t message_len = len;
+
+    /* Read packet id */
+    if (publish.header.bits.qos > AT_MOST_ONCE) {
+        pkt->publish.pkt_id = unpack_u16((const uint8_t **) &buf);
+        message_len -= sizeof(uint16_t);
+    }
+
+    /**
+     * Message len is calculated subtracting the length of the variable header
+     * from the Remaining Length field that is in the Fixed Header
+    */
+    message_len -= (sizeof(uint16_t) + topic_len);
+    pkt->publish.payloadlen = message_len;
+    pkt->publish.payload = malloc(message_len + 1);
+    unpack_bytes((const uint8_t **) &buf, message_len, pkt->publish.payload);
+
+    return len;
+}
+
 static size_t unpack_mqtt_subscribe(const unsigned char *, union mqtt_header *, union mqtt_packet *);
 static size_t unpack_mqtt_unsubscribe(const unsigned char *, union mqtt_header *, union mqtt_packet *);
 static size_t unpack_mqtt_ack(const unsigned char *, union mqtt_header *, union mqtt_packet *);
