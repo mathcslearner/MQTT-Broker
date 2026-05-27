@@ -327,6 +327,37 @@ struct mqtt_publish *mqtt_packet_publish(unsigned char byte,
     return publish;
 }
 
+void mqtt_packet_release(union mqtt_packet *pkt, unsigned type) {
+    switch (type) {
+        case CONNECT:
+            free(pkt->connect.payload.client_id);
+            if (pkt->connect.bits.username == 1)
+                free(pkt->connect.payload.username);
+            if (pkt->connect.bits.password == 1)
+                free(pkt->connect.payload.password);
+            if (pkt->connect.bits.will == 1) {
+                free(pkt->connect.payload.will_message);
+                free(pkt->connect.payload.will_topic);
+            }
+            break;
+        case SUBSCRIBE:
+        case UNSUBSCRIBE:
+            for (unsigned i = 0; i < pkt->subscribe.tuples_len; i++)
+                free(pkt->subscribe.tuples[i].topic);
+            free(pkt->subscribe.tuples);
+            break;
+        case SUBACK:
+            free(pkt->suback.rcs);
+            break;
+        case PUBLISH:
+            free(pkt->publish.topic);
+            free(pkt->publish.payload);
+            break;
+        default:
+            break;
+    }
+}
+
 static unsigned char *pack_mqtt_header(const union mqtt_header *);
 static unsigned char *pack_mqtt_ack(const union mqtt_packet *);
 static unsigned char *pack_mqtt_connack(const union mqtt_packet *);
