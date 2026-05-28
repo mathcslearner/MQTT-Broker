@@ -18,4 +18,15 @@ int set_nonblocking(int);
 */
 int set_tcp_nodelay(int);
 
+/* Auxiliary function for creating epoll server */
+int create_and_bind(const char *, const char *, int);
+
+/**
+ * Create a non-blocking socket and make it listen on the specified address and port
+*/
+int make_listen(const char *, const char *, int);
+
+/* Accept a connection and add it to the right epollfd */
+int accept_connection(int);
+
 #endif
