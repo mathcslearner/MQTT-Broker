@@ -137,3 +137,50 @@ int accept_connection(int serversock) {
     }
     return clientsock;
 }
+
+/* Send all bytes contained in buf, updating sent bytes counter */
+ssize_t send_bytes(int fd, const unsigned char *buf, size_t len) {
+    size_t total = 0;
+    size_t bytesleft = len;
+    ssize_t n = 0;
+    while (total < len) {
+        n = send(fd, buf + total, bytesleft, MSG_NOSIGNAL);
+        if (n == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+            else
+                goto err;
+        }
+        total += n;
+        bytesleft -= n;
+    }
+    return total;
+err:
+    fprintf(stderr, "send(2) - error sending data: %s", strerror(errno));
+    return -1;
+}
+
+/*
+ * Receive a given number of bytes on the descriptor fd, storing the stream of
+ * data into a 2 Mb capped buffer
+ */
+ssize_t recv_bytes(int fd, unsigned char *buf, size_t bufsize) {
+    ssize_t n = 0;
+    ssize_t total = 0;
+    while (total < (ssize_t) bufsize) {
+        if ((n = recv(fd, buf, bufsize - total, 0)) < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else
+                goto err;
+        }
+        if (n == 0)
+            return 0;
+        buf += n;
+        total += n;
+    }
+    return total;
+err:
+    fprintf(stderr, "recv(2) - error reading data: %s", strerror(errno));
+    return -1;
+}

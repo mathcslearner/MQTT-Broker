@@ -29,4 +29,18 @@ int make_listen(const char *, const char *, int);
 /* Accept a connection and add it to the right epollfd */
 int accept_connection(int);
 
+/* I/O management functions */
+
+/*
+ * Send all data in a loop, avoiding interruption based on the kernel buffer
+ * availability
+ */
+ssize_t send_bytes(int, const unsigned char *, size_t);
+
+/*
+ * Receive (read) an arbitrary number of bytes from a file descriptor and
+ * store them in a buffer
+ */
+ssize_t recv_bytes(int, unsigned char *, size_t);
+
 #endif
